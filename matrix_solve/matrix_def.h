@@ -8,10 +8,10 @@ const int DATA_NUM[MATRIX_NUM]  = {10000,  30000,  60000, 50000,  150000, 300000
 
 
 struct CsrMatrix {
-    int rows;		//行数
-    int *row_off;	//非零元在data,col中的索引
-    int *cols;		//列标
-    double *data;	//数据
+    int rows;		// 行数
+    int *row_off;	// 每行第一个非0元在所有非0元中的索引
+    int *cols;		// 第n个非0元素所在的column (matrix * vector, 仅需data所在columns)
+    double *data;	// 数据
     int data_size;
 };
 
