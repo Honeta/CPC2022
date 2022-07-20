@@ -51,5 +51,20 @@ void slave_func_cm(void* para)
 }
 void slave_func_ra(void* para)
 {
+    crts_rply_t dma_reply = 0;
+    unsigned int D_COUNT = 0;
+    int my_id = CRTS_rid*8+CRTS_cid;
+    Para_ra para_s;
+    CRTS_dma_iget(&para_s, para, sizeof(Para_ra),&dma_reply);
+    D_COUNT++;
+    CRTS_dma_wait_value(&dma_reply, D_COUNT);
+    int start = para_s.P[my_id];
+    int end = para_s.P[my_id+1];
+    int i = start;
+    while (i < end)
+    {
+        
+        i = i + para_s.inc;
+    }
     return;
 }
