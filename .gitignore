@@ -3,3 +3,4 @@ bin/
 .git
 *.o
 data/
+matrix_solve
