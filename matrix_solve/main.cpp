@@ -42,7 +42,7 @@ void main_calc(int matrix_index) {
         }
 
         double spmv_time_start = MPI_Wtime();
-        spmv(csr_matrix, x, b);
+        spmv(csr_matrix, x, b, my_rank);
         double spmv_time_end = MPI_Wtime();
         spmv_time_cost[matrix_index] += spmv_time_end - spmv_time_start;
 
