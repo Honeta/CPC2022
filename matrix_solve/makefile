@@ -1,6 +1,6 @@
 CC=mpicc
 
-CFLAGS=-O0 -fPIC -mieee -mftz
+CFLAGS=-O3 -fPIC -mieee -mftz
 INCLUDE=-I.
 
 LIB=libmatrix_solve.a
