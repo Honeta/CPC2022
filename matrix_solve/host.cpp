@@ -440,7 +440,7 @@ void spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
     }
 }
 
-void native_spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
+void naive_spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
     // sample
     for (int i = 0; i < csr_matrix.rows; i++) {
         //get the index of the first element in the row
