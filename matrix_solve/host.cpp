@@ -8,6 +8,14 @@
 #define ldm_size 256*1024
 #define MAX_ITERATIONS 200
 
+extern "C" {
+    void slave_fun_cm(void *para);
+    void slave_fun_ra(void *para);
+}
+
+// checkpoint
+void CP(const void *a) { printf("%s\n", a); }
+
 struct Csc_matrix {
     int n;              //number of columns
     int *col_ptr;       //index of the first element in a column
@@ -77,6 +85,8 @@ void csr2csc(const CsrMatrix &csr_matrix) {
     int * c_rows     = (int *)malloc(data_size * sizeof(int));
     static_value = (double *)malloc(data_size * sizeof(double));
     //number of element in every column
+    CP("T 0");
+    memset(c_col_ptr, 0, n * sizeof(int));
     for (int i = 0; i < data_size; ++i) {
         ++c_col_ptr[r_cols[i]];
     }
@@ -90,17 +100,19 @@ void csr2csc(const CsrMatrix &csr_matrix) {
         c_col_ptr[col] = sum;
         sum += tmp;
     }
-    //load data into csc value and row array
+    CP("T 1");
+    // load data into csc value and row array
     for (int row = 0; row < n; ++row) {
         int end = (row == n - 1 ? data_size : r_row_ptr[row + 1]);
         for (int i = r_row_ptr[row]; i < end; ++i) {
             int col = r_cols[i];
-            int index = c_col_ptr[col];
-            static_value[index] = r_value[i];
-            c_rows[index] = row;
-            ++c_col_ptr[col];
+                int index = c_col_ptr[col];
+                static_value[index] = r_value[i];
+                c_rows[index] = row;
+                ++c_col_ptr[col];
         }
     }
+    CP("T 2");
     //recover c_col_ptr array
     int first = 0;
     for (int col = 0; col < n; ++col) {
@@ -159,6 +171,7 @@ void auto_tuner_cm() {
     //D[i] : the number of columns which include i element
     //calculate D 
     int * D = (int *)malloc(L * sizeof(int));
+    memset(D, 0, L * sizeof(int));
     for (int i = 0; i < n; ++i) {
         ++D[col_emt[i]];
     }
@@ -176,7 +189,8 @@ void auto_tuner_cm() {
     //optmize K to minimum std, K ranging from 2 to L
     int inc_cnt = 0;
     K_cm = L;
-    for (int i = 2; i < L; ++i) {
+    for (int i = mean; i < L; ++i) {
+        inc_cnt = 0;
         int * DD = (int *)malloc((i+1) * sizeof(int));
         memcpy(DD, D, (i+1) * sizeof(int));
         //split long vec into short vec in statistic
@@ -224,10 +238,11 @@ void vec_split_cm() {
         (int *)malloc((n + inc_cnt) * sizeof(int));
     splited_x = (double *)malloc((n + inc_cnt) * sizeof(double));
     P_cm = (int *)malloc(65 * sizeof(int));
-
+    memset(splited_x_map, 0, (n + inc_cnt) * sizeof(int));
+    memset(splited_x, 0, (n + inc_cnt) * sizeof(double));
     int idx_ptr = 0;
     for (int i = 0; i < n; ++i) {
-        int count = col_emt[i] / K_cm + 1;
+        int count = (col_emt[i] + K_cm - 1) / K_cm;
         splited_col_ptr[idx_ptr] = col_ptr[i];
         for (int j = 0; j < count; ++j) {
             if(j != 0) {
@@ -240,7 +255,7 @@ void vec_split_cm() {
             ++idx_ptr;
         }
     }
-    P_cm[65] = n + inc_cnt;
+    P_cm[64] = n + inc_cnt;
     csc_matrix.splited_col_ptr = splited_col_ptr;
 }
 
@@ -346,7 +361,7 @@ void vec_split_ra() {
             ++idx_ptr;
         }
     }
-    P_ra[65] = n + inc_cnt;
+    P_ra[64] = n + inc_cnt;
     result_matrix.splited_row_ptr = splited_row_ptr;
 }
 
@@ -382,26 +397,31 @@ void release_space() {
     free(P_ra);
 }
 
-extern "C" {
-    void CMprocess(void *para);
-    void RAprocess(void *para);
-}
+
 
 //parallel spmv kernel
 void spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
+    printf("iter_round: %d\n", iter_rounds);
     if(iter_rounds == 0) {
         CRTS_init();
     }
     //update per MAX_ITERATIONS rounds 
     if(iter_rounds % MAX_ITERATIONS == 0) {
+        CP("1");
         csr2csc(csr_matrix);
+        CP("2");
         result_init(csr_matrix);
+        CP("3");
         auto_tuner_cm();
+        CP("4");
         vec_split_cm();
+        CP("5");
         //get K_ra
         auto_tuner_ra(csr_matrix);
+        CP("6");
         //get P_ra
         vec_split_ra();
+        CP("7");
         //set columns multiply para
         memcpy(&(para_cm.csc_matrix), &csc_matrix, sizeof(struct Csc_matrix));
         para_cm.splited_x = splited_x;
@@ -412,24 +432,28 @@ void spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
         para_ra.splited_b = splited_b;
         para_ra.P = P_ra;
         para_ra.Inc = ldm_size / (8 * K_ra + 12);
+        INFO("inc_cnt: %d, K: %d\n", csc_matrix.inc_cnt, K_cm);
     }
     ++iter_rounds;
 
+    CP("8");
     //update splited_x every iteration by splited_x_map
     //renew csc_matrix.value every iteration(value also store CM result)
     x_expand(x);
     memcpy(csc_matrix.value, static_value, csc_matrix.data_size * sizeof(double));
-    CRTS_athread_spawn_noflush(CMprocess, &para_cm);
+    CP("9");
+    CRTS_athread_spawn(slave_fun_cm, &para_cm);
     CRTS_athread_join();
 
     //only need to reposition value, reuse row_ptr and columns of csr_matrix
     csc2csr(csr_matrix);
+    CP("10");
 
-
-    CRTS_athread_spawn_noflush(RAprocess, &para_ra);
+    CRTS_athread_spawn(slave_fun_ra, &para_ra);
     CRTS_athread_join();
+    CP("11");
     b_reduce(b);
-
+    CP("12");
     //release space when matrix has been changed
     if(iter_rounds % MAX_ITERATIONS == 0) {
         release_space();
@@ -440,7 +464,7 @@ void spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
     }
 }
 
-void naive_spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
+void native_spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
     // sample
     for (int i = 0; i < csr_matrix.rows; i++) {
         //get the index of the first element in the row
