@@ -3,7 +3,7 @@
 #include "host.h"
 
 
-void spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
+void naive_spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
     // 实现样例
     for(int i = 0; i < csr_matrix.rows; i++) {
         int start = csr_matrix.row_off[i];
@@ -14,4 +14,9 @@ void spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
         }
         b[i]=result;
     }
+    
+}
+void spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
+    // naive_spmv(csr_matrix, x, b);
+    
 }

@@ -16,4 +16,11 @@ void write_result(int row_num, int data_num, double *x);
 void free_matrix(LduMatrix &ldu_matrix, CsrMatrix &csr_matrix);
 void free_vector(double* x, double* b, double* source);
 
+struct SlaveArgs {
+  double *x;
+  int *cols;
+  int start;
+  int end;
+}
+
 #endif
