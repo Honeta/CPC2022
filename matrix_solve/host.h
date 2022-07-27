@@ -17,10 +17,15 @@ void free_matrix(LduMatrix &ldu_matrix, CsrMatrix &csr_matrix);
 void free_vector(double* x, double* b, double* source);
 
 struct SlaveArgs {
-  double *x;
   int *cols;
-  int start;
-  int end;
-}
+  int *row_ptr;
+  int *start;
+  int *end;
+  int *L;
+  int *R;
+  double *midans;
+  double *b;
+  double *x;
+};
 
 #endif
