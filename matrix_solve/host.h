@@ -16,16 +16,17 @@ void write_result(int row_num, int data_num, double *x);
 void free_matrix(LduMatrix &ldu_matrix, CsrMatrix &csr_matrix);
 void free_vector(double* x, double* b, double* source);
 
-struct SlaveArgs {
-  int *cols;
+struct AlbusArgs {
+  int *col_idx;
   int *row_ptr;
+  double *mtx_val;
+  double *vec_val;
+  double *mid_ans;
   int *start;
   int *end;
-  int *L;
-  int *R;
-  double *midans;
-  double *b;
-  double *x;
+  int *block_size;
+  int thread_nums;
+  double *mtx_ans;
 };
 
 #endif

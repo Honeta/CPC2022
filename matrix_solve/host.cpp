@@ -2,7 +2,12 @@
 #include "matrix_def.h"
 #include "host.h"
 
-const int nslaves = 64;
+
+const int thread_num = 64;
+extern "C" {
+    void slave_func_albus_part1(void*);
+    void slave_func_albus_part2(void*);
+}
 
 void naive_spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
     // 实现样例
@@ -37,61 +42,59 @@ int GetRowIdx(int n, int x, int *off) {
 void spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
     // naive_spmv(csr_matrix, x, b);
     int nnz = csr_matrix.data_size;
-    int n = csr_matrix.rows;
-    int *cols = csr_matrix.cols;
-    double *value = csr_matrix.data;
-    int *row_off = csr_matrix.row_off;
+    int row_num = csr_matrix.rows;
+    int *col_idx = csr_matrix.cols;
+    double *mtx_val = csr_matrix.data;
+    int *row_ptr = csr_matrix.row_off;
     
-    int load = nnz / nslaves;
+    
 
-    int *start = (int*)malloc(sizeof(int)*nslaves);
-    int *end = (int*)malloc(sizeof(int)*nslaves);
-    int *L = (int*)malloc(sizeof(int)*nslaves);
-    int *R = (int*)malloc(sizeof(int)*nslaves);
-    double *midans = (double*)malloc(sizeof(double)*nslaves*2);
+    int *start = (int*)malloc(sizeof(int)*thread_num);
+    int *end = (int*)malloc(sizeof(int)*(thread_num+1));
+    int *block_size = (int*)malloc(sizeof(int)*thread_num);
+    double *mid_ans = (double*)malloc(sizeof(double)*thread_num*2);
 
-    for(int i = 0; i < nslaves; i++) {
-        L[i] = i * load;
+    //Algorithm 4 : ALBUS load balancing settings
+    block_size[thread_num] = nnz;
+    start[0] = 0;
+    end[thread_num - 1] = row_num;
+    int t = nnz / thread_num;
+    for(int i = 0; i < thread_num; i++) {
+        block_size[i] = i * t;
+        start[i] = GetRowIdx(row_num, block_size[i], row_ptr);
+        end[i - 1] = start[i];
     }
-    for(int i = 1; i < nslaves; i++) {
-        R[i-1] = start[i];
-    }
-    R[nslaves-1] = nnz;
-
-    for(int i = 0; i < nslaves; i++) {
-        start[i] = GetRowIdx(n, L[i], row_off);
-    }   
-    for(int i = 1; i < nslaves; i++) {
-        end[i-1] = start[i];
-    }
-    end[nslaves-1] = n;
 
     // start & end: edge case?
 
-    SlaveArgs args = SlaveArgs{};
-    args.x = x;
-    args.b = b;
-    args.row_ptr = row_off;
-    args.L = L;
-    args.R = R;
-    args.start = start;
-    args.end = end;
-    args.cols = cols;
 
     // start slave func
+    AlbusArgs args = AlbusArgs{};
+    args.col_idx = col_idx;
+    args.row_ptr = row_ptr;
+    args.mtx_val = mtx_val;
+    args.vec_val = x;
+    args.mid_ans = mid_ans;
+    args.start = start;
+    args.end = end;
+    args.block_size = block_size;
+    args.thread_nums = thread_num;
+    args.mtx_ans = b;
 
-
-
-
+    CRTS_init();
+    CRTS_athread_spawn(slave_func_albus_part1, &args);
+    CRTS_athread_join();
+    CRTS_athread_spawn(slave_func_albus_part2, &args);
+    CRTS_athread_join();
+    CRTS_athread_halt();
     // reduce ans
-    for(int i = 1; i < nslaves; i++) {
-        int idx = start[i];
-        b[idx] = midans[i<<1] + midans[i<<1|1];
-    }
+    // for(int i = 1; i < thread_num; i++) {
+    //     int idx = start[i];
+    //     b[idx] = midans[i<<1] + midans[i<<1|1];
+    // }
 
     free(start);
     free(end);
-    free(L);
-    free(R);
-    free(midans);
+    free(block_size);
+    free(mid_ans);
 }
