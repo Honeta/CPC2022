@@ -174,8 +174,17 @@ void slave_func_albus_part2(void* para)
         return;
     }
     int sub = tid << 1;
-    if(p->end[tid - 1] == p->start[tid])
-        p->mtx_ans[p->start[tid]] = p->mid_ans[sub - 1] + p->mid_ans[sub];
+    if(p->end[tid - 1] == p->start[tid]) {
+        // p->mtx_ans[p->start[tid]] = p->mid_ans[sub - 1] + p->mid_ans[sub];
+        int row = p->start[tid];
+        int start = p->row_ptr[row];
+        int end = p->row_ptr[row+1];
+        double sum = .0;
+        for(int i = start; i < end; i++) {
+            sum = sum + p->vec_val[p->col_idx[i]] * p->mtx_val[i];
+        }
+        p->mtx_ans[row] = sum;
+    }
     else
     {
         p->mtx_ans[p->start[tid]] = p->mid_ans[sub];
