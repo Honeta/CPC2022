@@ -77,19 +77,48 @@ void thread_block(int thread_id, int start, int end, int L, int R, int *row_ptr,
     }
 }
 
+double calc_dma_simd(int start, int end, int *col_idx, double *data, double *vec)
+{
+    int num = end - start;
+    int pad = 0;
+    if(num % 8 != 0) {
+        int div = num >> 3;
+        pad = (div<<3)+8-num;
+    }
+    double ldm_vec[num+pad] __attribute__((aligned(8)));
+
+    for (int i = 0; i < num; i++)
+    {
+        ldm_vec[i] = vec[col_idx[i]];
+    }
+    for(int i = num; i < num + pad; i++) {
+        ldm_vec[i] = 0;
+    }
+    double sum = .0;
+    doublev8 datav8, vecv8, mulv8;
+    for (int i = 0; i < num+pad; i+=8)
+    {
+        simd_load(datav8, data+i);
+        simd_load(vecv8, ldm_vec+i);
+        mulv8 = simd_vmuld(datav8, vecv8);
+        for(int j = 0; j < 8; j++) {
+            sum = sum + mulv8[j];
+        }
+    }
+    return sum;
+}
+
 double calc_dma(int start, int end, int *col_idx, double *data, double *vec) {
     
 
     int num = end - start;
     double ldm_vec[num] __attribute__((aligned(64)));
 
-    CRTS_dma_wait_value(&reply_col, REPLY_COL_COUNT);
     for (int i = 0; i < num; i++)
     {
         ldm_vec[i] = vec[col_idx[i]];
     }
     double sum = .0;
-    CRTS_dma_wait_value(&reply_data, REPLY_DATA_COUNT);
     for (int i = 0; i < num; i++)
     {
         sum = sum + ldm_vec[i] * data[i];
@@ -131,14 +160,14 @@ void thread_block_dma(int thread_id, int start, int end, int L, int R, int *row_
         REPLY_DATA_COUNT++;
         start1 = ldm_row_ptr[i];
         end1 = ldm_row_ptr[i + 1];
-        ldm_ans[i] = calc_dma(start1, end1, &ldm_col_idx[cur][0], &ldm_data[cur][0], vec_val);
+        ldm_ans[i] = calc_dma_simd(start1, end1, &ldm_col_idx[cur][0], &ldm_data[cur][0], vec_val);
         cur = next;
         next = next ^ 1;
     }
 
     CRTS_dma_wait_value(&reply_col, REPLY_COL_COUNT);
     CRTS_dma_wait_value(&reply_data, REPLY_DATA_COUNT);
-    ldm_ans[lines-1] = calc_dma(ldm_row_ptr[lines-1], ldm_row_ptr[lines], &ldm_col_idx[cur][0], &ldm_data[cur][0], vec_val);
+    ldm_ans[lines-1] = calc_dma_simd(ldm_row_ptr[lines-1], ldm_row_ptr[lines], &ldm_col_idx[cur][0], &ldm_data[cur][0], vec_val);
     CRTS_dma_put(mtx_ans + start, ldm_ans, lines * sizeof(double));
 }
 
@@ -155,7 +184,6 @@ void slave_func_albus_part1(void* para)
 
 void slave_func_albus_part2(void* para)
 {
-    return;
     struct AlbusArgs *p = (struct AlbusArgs *)para;
     int tid = CRTS_tid;
     if(tid == 0)
