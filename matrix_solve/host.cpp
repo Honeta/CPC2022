@@ -1,5 +1,6 @@
 #include "host.h"
 #include "matrix_def.h"
+#include <stdlib.h>
 #include <athread.h>
 
 const int thread_num = 64;
@@ -45,17 +46,21 @@ void spmv(const CsrMatrix &csr_matrix, double *x, double *b) {
     double *mtx_val = csr_matrix.data;
     int *row_ptr = csr_matrix.row_off;
 
+    //start row number
     int *start = (int *)malloc(sizeof(int) * thread_num);
+    //end row number
     int *end = (int *)malloc(sizeof(int) * (thread_num + 1));
+    //index of the first element a CPE processes
     int *block_size = (int *)malloc(sizeof(int) * (thread_num + 1));
     double *mid_ans = (double *)malloc(sizeof(double) * thread_num * 2);
 
     // Algorithm 4 : ALBUS load balancing settings
     block_size[thread_num] = nnz;
+    block_size[0] = 0;
     start[0] = 0;
     end[thread_num - 1] = row_num;
     int t = nnz / thread_num;
-    for (int i = 0; i < thread_num; i++) {
+    for (int i = 1; i < thread_num; i++) {
       block_size[i] = i * t;
       start[i] = GetRowIdx(row_num, block_size[i], row_ptr);
       end[i - 1] = start[i];
